@@ -33,10 +33,11 @@ services:
       - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__FERNET_KEY=
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - AIRFLOW__WEBSERVER__RBAC=False
       - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark apache-airflow-providers-docker
       - DOCKER_HOST=unix:///var/run/docker.sock
     ports:
@@ -48,14 +49,48 @@ services:
       - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
       - ./airflow/plugins:/opt/airflow/plugins
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    command: webserver
+    # The entrypoint is defined in the Dockerfile
+
+  airflow-scheduler:
+    build: ./airflow
+    container_name: airflow-scheduler
+    restart: always
+    user: "0"  # Run as root to have permissions to access docker.sock
+    depends_on:
+      - postgres
+      - spark-master
+      - airflow-webserver
+    environment:
+      - AIRFLOW_HOME=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark apache-airflow-providers-docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./data:/data
+      - ./airflow/plugins:/opt/airflow/plugins
     healthcheck:
-      test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
       interval: 30s
-      timeout: 30s
-      retries: 3
-    # The entrypoint and command are defined in the Dockerfile
+      timeout: 10s
+      retries: 5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: scheduler
 
   spark-master: # Spark Master
     image: bitnami/spark:3.4

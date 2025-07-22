@@ -26,7 +26,13 @@ run_java_client = BashOperator(
 
 run_spark_transform = BashOperator(
     task_id='run_spark_transform',
-    bash_command='docker exec spark-master spark-submit /app/transform.py',
+    bash_command='''
+    docker exec spark-master spark-submit \
+    --packages io.delta:delta-core_2.12:2.4.0 \
+    --conf 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension' \
+    --conf 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog' \
+    /tmp/transform.py
+    ''',
     dag=dag,
 )
 
