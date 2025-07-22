@@ -5,6 +5,8 @@ __pycache__/
 
 # Caches
 .cache
+.pytest_cache/
+.mypy_cache/
 
 # Java
 *.class
@@ -14,30 +16,58 @@ target/
 # Python
 .venv/
 venv/
+*.egg-info/
 
-# Spark logs
+# Spark
 spark-warehouse/
 metastore_db/
+*.log
 
 # Airflow
 airflow/logs/
 airflow/airflow.db
+airflow/webserver_config.py
+airflow/airflow.cfg
 
 # Delta Lake
 *.crc
+*.crc.staging
+
+# Environment variables
+.env
+!.env.example
 
 # Data
-/data/
-!/data/raw/
-!/data/delta/
+/data/processed/
+/data/*.parquet
+/data/*.json
 
-# VSCode
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
 
 # Docker
 *.pid
 *.sock
+*.pid.lock
 
 # System
 .DS_Store
 Thumbs.db
+*.bak
+*.tmp
+
+# Logs
+logs/
+*.log
+
+# Local development
+.direnv/
+
+# CI/CD
+.ci/
+
+# Local overrides
+docker-compose.override.yml
