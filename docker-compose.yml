@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  airflow-webserver:
+    build: ./airflow
+    container_name: airflow-webserver
+    ports:
+      - "8081:8080"  # Airflow Web UI
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=your_fernet_key
+      - AIRFLOW__WEBSERVER__RBAC=True
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./data:/data
+    depends_on:
+      - spark-master
+
+  spark-master:
+    build: ./spark
+    container_name: spark-master
+    command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/run.sh"]
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "4041:4040"  # Spark UI
+    volumes:
+      - ./data:/data
+
+  spark-worker:
+    build: ./spark
+    container_name: spark-worker
+    command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/run.sh"]
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ./data:/data
+
+  java-client:
+    build:
+      context: .
+      dockerfile: java-client/Dockerfile
+    container_name: java-client
+    volumes:
+      - ./docker-java-target:/app
+      - ./data/raw:/app/data/raw
+    environment:
+      - JAVA_OPTS=-Xmx512m
+    depends_on:
+      - spark-master
+      - spark-worker
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9091:9090"  # Prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"  # Grafana
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+
+volumes:
+  data:

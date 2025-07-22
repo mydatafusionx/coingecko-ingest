@@ -1,0 +1,53 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Docker images
+        run: docker-compose build
+
+      - name: Lint Python
+        run: |
+          pip install flake8
+          flake8 spark/transform.py || true
+
+      - name: Lint Java
+        run: |
+          sudo apt-get update && sudo apt-get install -y maven
+          cd java-client && mvn checkstyle:check || true
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Copy files to Hostinger VPC
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "~/datafusion-ingest-api-delta"
+
+      - name: Deploy on Hostinger VPC
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/datafusion-ingest-api-delta
+            docker-compose down || true
+            docker-compose pull || true
+            docker-compose build --no-cache
+            docker-compose up -d --remove-orphans

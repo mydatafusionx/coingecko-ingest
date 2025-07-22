@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.cache
+
+# Java
+*.class
+*.jar
+target/
+
+# Python
+.venv/
+venv/
+
+# Spark logs
+spark-warehouse/
+metastore_db/
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+
+# Delta Lake
+*.crc
+
+# Data
+/data/
+!/data/raw/
+!/data/delta/
+
+# VSCode
+.vscode/
+
+# Docker
+*.pid
+*.sock
+
+# System
+.DS_Store
+Thumbs.db
