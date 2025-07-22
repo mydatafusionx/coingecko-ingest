@@ -15,15 +15,15 @@ import java.time.format.DateTimeFormatter;
 public final class CoinGeckoIngest {
     /** HTTP client for making API requests. */
     private static final OkHttpClient CLIENT = new OkHttpClient();
-    
+
     /** Base URL for CoinGecko API. */
     private static final String BASE_URL = "https://api.coingecko.com/api/v3";
-    
+
     /** Path to store raw data files. */
     private static final String RAW_PATH = "/data/raw/";
-    
+
     /** Date formatter for timestamp. */
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = 
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
         DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
     /**
@@ -40,17 +40,20 @@ public final class CoinGeckoIngest {
      * @throws IOException if an I/O error occurs
      */
     public static void main(final String[] args) throws IOException {
-        fetchAndSave("/coins/list", "coins_list");
         fetchAndSave(
-            "/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", 
+            "/coins/list",
+            "coins_list"
+        );
+        fetchAndSave(
+            "/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
             "simple_price"
         );
         fetchAndSave(
-            "/coins/bitcoin/market_chart?vs_currency=usd&days=1", 
+            "/coins/bitcoin/market_chart?vs_currency=usd&days=1",
             "market_chart_bitcoin"
         );
         fetchAndSave(
-            "/coins/ethereum/market_chart?vs_currency=usd&days=1", 
+            "/coins/ethereum/market_chart?vs_currency=usd&days=1",
             "market_chart_ethereum"
         );
     }
@@ -63,7 +66,7 @@ public final class CoinGeckoIngest {
      * @throws IOException if an I/O error occurs
      */
     private static void fetchAndSave(
-            final String endpoint, 
+            final String endpoint,
             final String prefix
     ) throws IOException {
         String url = BASE_URL + endpoint;
@@ -82,9 +85,13 @@ public final class CoinGeckoIngest {
                 dir.mkdirs();
             }
             
-            String filename = String.format("%s%s_%s.json", 
-                RAW_PATH, prefix, timestamp);
-                
+            String filename = String.format(
+                "%s%s_%s.json",
+                RAW_PATH,
+                prefix,
+                timestamp
+            );
+
             try (FileWriter writer = new FileWriter(filename)) {
                 writer.write(response.body().string());
                 System.out.println("Saved: " + prefix + " at " + timestamp);
