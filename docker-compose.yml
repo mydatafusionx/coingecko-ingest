@@ -128,8 +128,8 @@ services:
 
   java-client:
     build:
-      context: .
-      dockerfile: java-client/Dockerfile
+      context: ./java-client
+      dockerfile: Dockerfile
     container_name: java-client
     volumes:
       - ./data/raw:/data/raw

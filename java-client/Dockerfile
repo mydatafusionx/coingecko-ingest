@@ -10,8 +10,11 @@ COPY pom.xml .
 # Baixa as dependências (cacheado enquanto o pom.xml não mudar)
 RUN mvn dependency:go-offline
 
+# Cria a estrutura de diretórios
+RUN mkdir -p src/main/java
+
 # Copia o código fonte
-COPY src/ /app/src/
+COPY src/ ./src/
 
 # Build da aplicação
 RUN mvn clean package -DskipTests && \
