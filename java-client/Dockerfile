@@ -1,12 +1,16 @@
 # Build stage
 FROM maven:3.9.6-eclipse-temurin-21 AS builder
-WORKDIR /app
-COPY . .
+WORKDIR /build
+# Copia apenas os arquivos necessários
+COPY pom.xml .
+COPY src ./src
+# Baixa as dependências e compila
 RUN mvn clean package -DskipTests
 
 # Runtime stage
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=builder /app/target/coin-gecko-ingest-*.jar app.jar
+# Copia o JAR gerado
+COPY --from=builder /build/target/coin-gecko-ingest-*.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
