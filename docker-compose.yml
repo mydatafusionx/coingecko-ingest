@@ -23,6 +23,7 @@ services:
     build: ./airflow
     container_name: airflow-webserver
     restart: always
+    user: "0"  # Run as root to have permissions to access docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,13 +37,19 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
-      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark
+      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark apache-airflow-providers-docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
     ports:
       - "8081:8080"
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
+      - ./airflow/plugins:/opt/airflow/plugins
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
       interval: 30s

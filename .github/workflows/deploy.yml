@@ -28,17 +28,30 @@ jobs:
     - name: Setup VPS
       run: |
         ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "
+          # Create necessary directories
           sudo mkdir -p $VPS_DEPLOY_PATH/data/{raw,delta,processed}
+          sudo mkdir -p $VPS_DEPLOY_PATH/airflow/{dags,logs,plugins}
+          
+          # Set permissions
           sudo chown -R $VPS_USER:$VPS_USER $VPS_DEPLOY_PATH
-          sudo chmod -R 755 $VPS_DEPLOY_PATH
+          sudo chmod -R 775 $VPS_DEPLOY_PATH
           
           # Install Docker if not exists
           if ! command -v docker &> /dev/null; then
             sudo apt-get update
             sudo apt-get install -y docker.io docker-compose
-            sudo usermod -aG docker $USER
             sudo systemctl enable --now docker
           fi
+          
+          # Add current user to docker group if not already
+          if ! groups $VPS_USER | grep -q '\bdocker\b'; then
+            sudo usermod -aG docker $VPS_USER
+            # Need to logout/login for group changes to take effect
+            # But we'll handle this with sudo in the meantime
+          fi
+          
+          # Ensure Docker socket has correct permissions
+          sudo chmod 666 /var/run/docker.sock || true
         "
         
     - name: Deploy application
@@ -48,16 +61,36 @@ jobs:
           --exclude='.git' \
           --exclude='.github' \
           --exclude='.idea' \
+          --exclude='.env' \
           --exclude='*.pyc' \
           --exclude='__pycache__' \
+          --exclude='data' \
           . $VPS_USER@$VPS_HOST:$VPS_DEPLOY_PATH/
           
-        # Start/restart services
+        # Make scripts executable
+        ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "
+          chmod +x $VPS_DEPLOY_PATH/scripts/*.sh
+        "
+        # Run setup script
         ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "
           cd $VPS_DEPLOY_PATH
-          docker-compose down
-          docker-compose pull
+          # Stop any running containers
+          docker-compose down || true
+          
+          # Ensure Docker socket permissions
+          sudo chmod 666 /var/run/docker.sock || true
+          
+          # Run setup script
+          ./scripts/setup_airflow.sh
+          
+          # Start all services
           docker-compose up -d --build
+          
+          # Verify services are running
+          docker ps
+          
+          # Show logs if there are any issues
+          docker-compose logs --tail=50
         "
         
     - name: Verify deployment
