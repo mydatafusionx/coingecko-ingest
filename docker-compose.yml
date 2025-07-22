@@ -13,20 +13,28 @@ services:
       - "5432:5432"
     volumes:
       - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   airflow-webserver:
     build: ./airflow
     container_name: airflow-webserver
     restart: always
     depends_on:
-      - postgres
-      - spark-master
+      postgres:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
     environment:
+      - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__FERNET_KEY=''
-      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION='true'
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__FERNET_KEY=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
       - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark
     ports:
@@ -35,20 +43,12 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
-    entrypoint: /bin/bash
-    command: >
-      -c '
-      set -e && \
-      airflow db init && \
-      airflow users create \
-        --username admin \
-        --password admin \
-        --firstname Admin \
-        --lastname User \
-        --role Admin \
-        --email admin@example.org || true && \
-      exec airflow webserver
-      '
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    # The entrypoint and command are defined in the Dockerfile
 
   spark-master: # Spark Master
     image: bitnami/spark:3.4
@@ -61,6 +61,11 @@ services:
       - "8080:8080"  # Spark Master Web UI
     volumes:
       - ./data:/data
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "org.apache.spark.deploy.master.Master"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   spark-worker:
     image: bitnami/spark:3.4
@@ -69,9 +74,15 @@ services:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
     depends_on:
-      - spark-master
+      spark-master:
+        condition: service_healthy
     volumes:
       - ./data:/data
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "org.apache.spark.deploy.worker.Worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   java-client:
     build:

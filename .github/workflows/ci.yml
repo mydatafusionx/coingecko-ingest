@@ -98,9 +98,25 @@ jobs:
             # Adiciona o usuário ao grupo docker
             sudo usermod -aG docker $USER
             
-            # Navega para o diretório do projeto e sobe os containers
+            # Cria os diretórios necessários e ajusta permissões
+            mkdir -p ~/datafusion-ingest-api-delta/airflow/logs
+            chmod -R 777 ~/datafusion-ingest-api-delta/airflow/logs
+            
+            # Navega para o diretório do projeto
             cd ~/datafusion-ingest-api-delta
-            docker-compose down || true
-            docker-compose pull || true
-            docker-compose build --no-cache
-            docker-compose up -d --remove-orphans
+            
+            # Remove containers antigos
+            docker-compose down -v || true
+            
+            # Cria rede se não existir
+            docker network create datafusion-network || true
+            
+            # Inicia os containers
+            docker-compose up -d --build
+            
+            # Ajusta permissões após os containers iniciarem
+            sleep 10  # Aguarda os containers iniciarem
+            docker exec airflow-webserver chmod -R 777 /opt/airflow/logs || true
+            
+            # Verifica se os containers estão rodando
+            docker ps || true
