@@ -215,8 +215,6 @@ services:
       - /dev/kmsg:/dev/kmsg
     networks:
       - monitoring
-    depends_on:
-      - prometheus
 
 networks:
   monitoring:
