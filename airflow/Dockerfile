@@ -8,25 +8,25 @@ RUN apt-get update && \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Cria diretórios necessários
+RUN mkdir -p /opt/airflow/logs/scheduler \
+    && chown -R airflow:0 /opt/airflow/logs \
+    && chmod -R 777 /opt/airflow/logs
+
+# Copia os DAGs e requirements
+COPY --chown=airflow:0 dags/ /opt/airflow/dags/
+COPY --chown=airflow:0 requirements.txt /tmp/requirements.txt
+
+# Muda para o usuário airflow para instalar as dependências
+USER airflow
+
 # Instala as dependências do Python
-COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Instala os providers necessários
 RUN pip install --no-cache-dir \
     apache-airflow-providers-docker \
     apache-airflow-providers-apache-spark
-
-# Cria diretórios necessários
-RUN mkdir -p /opt/airflow/logs/scheduler \
-    && chown -R airflow:0 /opt/airflow/logs \
-    && chmod -R 777 /opt/airflow/logs
-
-# Copia os DAGs para o diretório correto
-COPY --chown=airflow:0 dags/ /opt/airflow/dags/
-
-# Define o usuário padrão
-USER airflow
 
 # Adiciona o diretório de binários do usuário ao PATH
 ENV PATH="${PATH}:/home/airflow/.local/bin"
