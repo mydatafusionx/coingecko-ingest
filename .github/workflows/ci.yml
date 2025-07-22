@@ -36,7 +36,7 @@ jobs:
           cd java-client
           mvn clean package -DskipTests
           mkdir -p ../docker-java-target
-          cp target/*.jar ../docker-java-target/coin-gecko-ingest.jar
+          cp target/coin-gecko-ingest-1.0-SNAPSHOT.jar ../docker-java-target/coin-gecko-ingest.jar
 
       - name: Build Docker images
         run: docker-compose build
