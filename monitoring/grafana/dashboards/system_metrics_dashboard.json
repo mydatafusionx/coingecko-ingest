@@ -11,6 +11,7 @@
   "panels": [
     {
       "datasource": "Prometheus",
+      "description": "Monitora o uso de CPU em todos os nós",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -56,7 +57,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -84,21 +86,17 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(airflow_dagrun_duration_success[5m])) by (dag_id)",
-          "legendFormat": "{{dag_id}} (success)",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) by (instance)",
+          "legendFormat": "{{instance}} CPU %",
           "refId": "A"
-        },
-        {
-          "expr": "sum(rate(airflow_dagrun_duration_failed[5m])) by (dag_id)",
-          "legendFormat": "{{dag_id}} (failed)",
-          "refId": "B"
         }
       ],
-      "title": "Airflow DAG Execution Status",
+      "title": "CPU Usage",
       "type": "timeseries"
     },
     {
       "datasource": "Prometheus",
+      "description": "Monitora o uso de memória em todos os nós",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -138,10 +136,14 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           },
-          "unit": "s"
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -156,7 +158,6 @@
         "legend": {
           "calcs": [
             "mean",
-            "max",
             "lastNotNull"
           ],
           "displayMode": "table",
@@ -170,16 +171,17 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(airflow_task_duration_sum{dag_id=~\"$dag_id\"}[5m])) by (task_id) / sum(rate(airflow_task_duration_count{dag_id=~\"$dag_id\"}[5m])) by (task_id)",
-          "legendFormat": "{{task_id}}",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+          "legendFormat": "{{instance}} Memory %",
           "refId": "A"
         }
       ],
-      "title": "Airflow Task Duration (avg)",
+      "title": "Memory Usage",
       "type": "timeseries"
     },
     {
       "datasource": "Prometheus",
+      "description": "Monitora o uso de disco em todos os nós",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -219,9 +221,14 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
-          }
+          },
+          "unit": "Bps"
         },
         "overrides": []
       },
@@ -249,16 +256,22 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(airflow_dag_processing_import_errors[5m])) by (dag_file)",
-          "legendFormat": "{{dag_file}}",
+          "expr": "rate(node_disk_read_bytes_total[5m])",
+          "legendFormat": "{{device}} read",
           "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_written_bytes_total[5m])",
+          "legendFormat": "{{device}} written",
+          "refId": "B"
         }
       ],
-      "title": "Airflow DAG Import Errors",
+      "title": "Disk I/O",
       "type": "timeseries"
     },
     {
       "datasource": "Prometheus",
+      "description": "Monitora o tráfego de rede em todos os nós",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -301,7 +314,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "Bps"
         },
         "overrides": []
       },
@@ -329,40 +342,137 @@
       },
       "targets": [
         {
-          "expr": "sum(jvm_memory_bytes_used{container_label_com_docker_compose_service=~\"spark-.*\"}) by (container_label_com_docker_compose_service)",
-          "legendFormat": "{{container_label_com_docker_compose_service}} used",
+          "expr": "rate(node_network_receive_bytes_total[5m])",
+          "legendFormat": "{{device}} received",
           "refId": "A"
         },
         {
-          "expr": "sum(jvm_memory_bytes_max{container_label_com_docker_compose_service=~\"spark-.*\"}) by (container_label_com_docker_compose_service)",
-          "legendFormat": "{{container_label_com_docker_compose_service}} max",
+          "expr": "rate(node_network_transmit_bytes_total[5m])",
+          "legendFormat": "{{device}} transmitted",
           "refId": "B"
         }
       ],
-      "title": "Spark Memory Usage",
+      "title": "Network Traffic",
       "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Exibe o status atual dos containers Docker",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "N/A"
+                }
+              },
+              "type": "special"
+            },
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "text": "Stopped"
+                },
+                "1": {
+                  "color": "green",
+                  "text": "Running"
+                },
+                "2": {
+                  "color": "yellow",
+                  "text": "Paused"
+                },
+                "3": {
+                  "color": "orange",
+                  "text": "Restarting"
+                },
+                "4": {
+                  "color": "red",
+                  "text": "Dead"
+                },
+                "5": {
+                  "color": "blue",
+                  "text": "Created"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "8.3.4",
+      "targets": [
+        {
+          "expr": "container_last_seen{container_label_com_docker_compose_project=~\"$compose_project\"} == 1",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "{{container_label_com_docker_compose_service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Docker Containers Status",
+      "type": "table"
     }
   ],
   "refresh": "10s",
   "schemaVersion": 30,
   "style": "dark",
-  "tags": ["airflow", "spark", "monitoring"],
+  "tags": ["system", "monitoring"],
   "templating": {
     "list": [
       {
         "current": {
           "selected": false,
-          "text": "api_to_delta",
-          "value": "api_to_delta"
+          "text": "coingecko-ingest",
+          "value": "coingecko-ingest"
         },
-        "description": "Filter by DAG ID",
+        "description": "Filter by Docker Compose project name",
         "hide": 0,
-        "includeAll": true,
-        "label": "DAG ID",
+        "includeAll": false,
+        "label": "Compose Project",
         "multi": false,
-        "name": "dag_id",
+        "name": "compose_project",
         "options": [],
-        "query": "label_values(airflow_dagrun_duration_success, dag_id)",
+        "query": "label_values(container_last_seen, container_label_com_docker_compose_project)",
         "queryValue": "",
         "refresh": 1,
         "regex": "",
@@ -377,8 +487,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Airflow & Spark Monitoring",
-  "uid": "airflow-spark-monitoring",
+  "title": "System Metrics",
+  "uid": "system-metrics",
   "version": 1,
   "weekStart": ""
 }
