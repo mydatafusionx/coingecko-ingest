@@ -2,36 +2,55 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+
   airflow-webserver:
     build: ./airflow
     container_name: airflow-webserver
-    ports:
-      - "8081:8080"  # Airflow Web UI
+    restart: always
+    depends_on:
+      - postgres
+      - spark-master
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__FERNET_KEY=your_fernet_key
-      - AIRFLOW__WEBSERVER__RBAC=True
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=''
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION='true'
+      - AIRFLOW__CORE__LOAD_EXAMPLES='false'
+      - AIRFLOW__API__AUTH_BACKEND='airflow.api.auth.backend.basic_auth'
+    ports:
+      - "8081:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
-    depends_on:
-      - spark-master
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.org || true && airflow webserver"
 
   spark-master: # Spark Master
-    build: ./spark
+    image: bitnami/spark:3.4
     container_name: spark-master
-    command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/run.sh"]
     environment:
       - SPARK_MODE=master
     ports:
       - "4041:4040"  # Spark UI
+      - "7077:7077"  # Spark Master
+      - "8080:8080"  # Spark Master Web UI
     volumes:
       - ./data:/data
 
   spark-worker:
-    build: ./spark
+    image: bitnami/spark:3.4
     container_name: spark-worker
-    command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/run.sh"]
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -74,3 +93,4 @@ services:
 
 volumes:
   data:
+  postgres-db:
