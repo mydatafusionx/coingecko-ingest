@@ -73,18 +73,18 @@ public final class CoinGeckoIngest {
         Request request = new Request.Builder()
             .url(url)
             .build();
-            
+
         try (Response response = CLIENT.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Unexpected code " + response);
             }
-            
+
             String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
             File dir = new File(RAW_PATH);
             if (!dir.exists()) {
                 dir.mkdirs();
             }
-            
+
             String filename = String.format(
                 "%s%s_%s.json",
                 RAW_PATH,
