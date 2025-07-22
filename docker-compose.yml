@@ -1,3 +1,4 @@
+
 version: '3.8'
 
 services:
@@ -16,7 +17,7 @@ services:
     depends_on:
       - spark-master
 
-  spark-master:
+  spark-master: # Spark Master
     build: ./spark
     container_name: spark-master
     command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/run.sh"]
