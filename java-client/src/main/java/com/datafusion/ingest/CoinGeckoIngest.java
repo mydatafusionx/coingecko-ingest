@@ -31,7 +31,7 @@ public final class CoinGeckoIngest {
     private static final int MAX_RETRIES = 3;
 
     /** Initial delay between retries in milliseconds. */
-    private static final long INITIAL_RETRY_DELAY_MS = 1000;
+    private static final long INITIAL_RETRY_DELAY_MS = 2000;
 
     /**
      * Private constructor to prevent instantiation.
@@ -56,11 +56,11 @@ public final class CoinGeckoIngest {
         // Execute API calls with rate limiting
         executeWithRetry(client, "/coins/list", "coins_list");
         // Add delay between API calls to respect rate limits
-        sleep(1000);
+        sleep(2000);
         executeWithRetry(client, "/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", "simple_price");
-        sleep(1000);
+        sleep(2000);
         executeWithRetry(client, "/coins/bitcoin/market_chart?vs_currency=usd&days=1", "market_chart_bitcoin");
-        sleep(1000);
+        sleep(2000);
         executeWithRetry(client, "/coins/ethereum/market_chart?vs_currency=usd&days=1", "market_chart_ethereum");
     }
 
@@ -92,8 +92,8 @@ public final class CoinGeckoIngest {
                 if (e.getMessage() != null && e.getMessage().contains("429")) {
                     System.out.println(String.format("Rate limited. Waiting %d ms before retry...", delayMs));
                     sleep(delayMs);
-                    // Exponential backoff
-                    delayMs *= 2;
+                    // Exponential backoff with jitter
+                    delayMs = (long) (delayMs * 2.5 + (Math.random() * 1000));
                 } else {
                     // For other errors, use a smaller delay
                     sleep(1000);

@@ -80,33 +80,70 @@ run_spark_transform = BashOperator(
     bash_command='''
     # Print current directory and spark directory contents for debugging
     echo "Current directory: $(pwd)"
-    echo "Contents of /opt/airflow/spark:"
-    ls -la /opt/airflow/spark/ || echo "Failed to list spark directory"
+    echo "Contents of /opt/airflow/dags/spark:"
+    ls -la /opt/airflow/dags/spark/ || echo "Failed to list spark directory"
     
     # Copy the transform.py script to the spark-master container
-    if [ -f "/opt/airflow/spark/transform.py" ]; then
+    if [ -f "/opt/airflow/dags/spark/transform.py" ]; then
         echo "Copying transform.py to spark-master container..."
-        docker cp /opt/airflow/spark/transform.py spark-master:/tmp/transform.py
+        docker cp /opt/airflow/dags/spark/transform.py spark-master:/tmp/transform.py
         
         # Verify the file was copied
         echo "Verifying file was copied to spark-master container:"
-        docker exec spark-master ls -la /tmp/transform.py || echo "File not found in container"
+        docker exec spark-master ls -la /tmp/transform.py || { echo "File not found in container"; exit 1; }
         
-        # Run the Spark job
-        echo "Running Spark job..."
-        docker exec spark-master spark-submit \
-            --packages io.delta:delta-core_2.12:2.4.0 \
-            --conf 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension' \
-            --conf 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog' \
-            /tmp/transform.py
+        # Run the Spark job with retry logic
+        MAX_RETRIES=3
+        RETRY_DELAY=60  # seconds
+        
+        for i in $(seq 1 $((MAX_RETRIES + 1))); do
+            echo "[Attempt $i of $((MAX_RETRIES + 1))] Running Spark job..."
+            
+            # Run Spark job with error output captured
+            OUTPUT=$(docker exec spark-master spark-submit \
+                --packages io.delta:delta-core_2.12:2.4.0 \
+                --conf 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension' \
+                --conf 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog' \
+                /tmp/transform.py 2>&1)
+            EXIT_CODE=$?
+            
+            # Check if the command was successful
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo "Spark job completed successfully"
+                echo "$OUTPUT"
+                exit 0
+            fi
+            
+            # Log the error
+            echo "Spark job failed with exit code $EXIT_CODE"
+            echo "Error output:"
+            echo "$OUTPUT"
+            
+            # Check if we should retry
+            if [ $i -le $MAX_RETRIES ]; then
+                echo "Retrying in $RETRY_DELAY seconds... (attempt $((i + 1)) of $((MAX_RETRIES + 1)))"
+                sleep $RETRY_DELAY
+                # Increase delay for next retry (exponential backoff)
+                RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+        done
+        
+        # If we get here, all retries failed
+        echo "Spark job failed after $((MAX_RETRIES + 1)) attempts"
+        exit 1
     else
-        echo "Error: transform.py not found at /opt/airflow/spark/transform.py"
-        echo "Contents of /opt/airflow:"
-        ls -la /opt/airflow/
+        echo "Error: transform.py not found at /opt/airflow/dags/spark/transform.py"
+        echo "Contents of /opt/airflow/dags/:"
+        ls -la /opt/airflow/dags/
         exit 1
     fi
     ''',
     dag=dag,
+    retries=2,  # Número de retentativas no nível do Airflow
+    retry_delay=timedelta(minutes=10),  # Tempo entre as retentativas do Airflow
+    retry_exponential_backoff=True,  # Habilita backoff exponencial
+    max_retry_delay=timedelta(minutes=30),  # Tempo máximo de espera entre tentativas
+    execution_timeout=timedelta(minutes=30),  # Tempo máximo de execução da tarefa
 )
 
 run_java_client >> run_spark_transform

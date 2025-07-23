@@ -48,11 +48,16 @@ builder = (
     .config("spark.sql.warehouse.dir", os.path.join(BASE_DIR, "spark-warehouse"))
     .config("spark.driver.memory", "2g")
     .config("spark.executor.memory", "2g")
-    # Desativa as métricas do Prometheus para evitar erros
+    # Desativa completamente as métricas para evitar erros
     .config("spark.metrics.conf", "/dev/null")
     .config("spark.metrics.namespace", "")
     .config("spark.metrics.staticSources.enabled", "false")
     .config("spark.ui.prometheus.enabled", "false")
+    .config("spark.metrics.enabled", "false")
+    .config("spark.ui.enabled", "false")
+    .config("spark.eventLog.enabled", "false")
+    .config("spark.sql.adaptive.enabled", "true")
+    .config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:/opt/bitnami/spark/conf/log4j.properties -Dspark.metrics.static.sources= -Dspark.metrics.namespace=")
 )
 
 # Configura o Delta Lake
