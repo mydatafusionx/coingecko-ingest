@@ -43,7 +43,8 @@ COPY --chown=airflow:0 requirements.txt /tmp/requirements.txt
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir "apache-airflow[postgres,celery,redis,ssh,docker]==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}" \
-    && pip install --no-cache-dir -r /tmp/requirements.txt
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && pip install --no-cache-dir prometheus-client==0.20.0
 
 # Copy necessary files
 COPY --chown=airflow:0 dags/ ${AIRFLOW_HOME}/dags/

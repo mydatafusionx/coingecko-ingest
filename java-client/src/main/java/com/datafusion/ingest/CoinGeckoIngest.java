@@ -8,6 +8,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Utility class for ingesting data from CoinGecko API.
@@ -26,6 +27,12 @@ public final class CoinGeckoIngest {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
         DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
+    /** Maximum number of retries for API calls. */
+    private static final int MAX_RETRIES = 3;
+
+    /** Initial delay between retries in milliseconds. */
+    private static final long INITIAL_RETRY_DELAY_MS = 1000;
+
     /**
      * Private constructor to prevent instantiation.
      */
@@ -37,52 +44,98 @@ public final class CoinGeckoIngest {
      * Main method to fetch and save data from CoinGecko API.
      *
      * @param args command line arguments (not used)
-     * @throws IOException if an I/O error occurs
      */
-    public static void main(final String[] args) throws IOException {
-        fetchAndSave(
-            "/coins/list",
-            "coins_list"
-        );
-        fetchAndSave(
-            "/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
-            "simple_price"
-        );
-        fetchAndSave(
-            "/coins/bitcoin/market_chart?vs_currency=usd&days=1",
-            "market_chart_bitcoin"
-        );
-        fetchAndSave(
-            "/coins/ethereum/market_chart?vs_currency=usd&days=1",
-            "market_chart_ethereum"
-        );
+    public static void main(final String[] args) {
+        // Configure HTTP client with timeouts
+        OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+
+        // Execute API calls with rate limiting
+        executeWithRetry(client, "/coins/list", "coins_list");
+        // Add delay between API calls to respect rate limits
+        sleep(1000);
+        executeWithRetry(client, "/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", "simple_price");
+        sleep(1000);
+        executeWithRetry(client, "/coins/bitcoin/market_chart?vs_currency=usd&days=1", "market_chart_bitcoin");
+        sleep(1000);
+        executeWithRetry(client, "/coins/ethereum/market_chart?vs_currency=usd&days=1", "market_chart_ethereum");
+    }
+
+    /**
+     * Executes an API call with retry logic.
+     *
+     * @param client the HTTP client to use
+     * @param endpoint the API endpoint to call
+     * @param prefix the prefix for the output file
+     */
+    private static void executeWithRetry(OkHttpClient client, String endpoint, String prefix) {
+        int attempt = 0;
+        long delayMs = INITIAL_RETRY_DELAY_MS;
+        
+        while (attempt < MAX_RETRIES) {
+            attempt++;
+            try {
+                System.out.println(String.format("Attempt %d/%d for %s", attempt, MAX_RETRIES, prefix));
+                fetchAndSave(client, endpoint, prefix);
+                return; // Success, exit the retry loop
+            } catch (IOException e) {
+                if (attempt >= MAX_RETRIES) {
+                    System.err.println(String.format("Failed to fetch %s after %d attempts: %s", 
+                        prefix, MAX_RETRIES, e.getMessage()));
+                    return;
+                }
+                
+                // If rate limited, wait longer
+                if (e.getMessage() != null && e.getMessage().contains("429")) {
+                    System.out.println(String.format("Rate limited. Waiting %d ms before retry...", delayMs));
+                    sleep(delayMs);
+                    // Exponential backoff
+                    delayMs *= 2;
+                } else {
+                    // For other errors, use a smaller delay
+                    sleep(1000);
+                }
+            }
+        }
     }
 
     /**
      * Fetches data from the specified endpoint and saves it to a file.
      *
+     * @param client the HTTP client to use
      * @param endpoint the API endpoint to fetch data from
      * @param prefix the prefix to use for the output file
      * @throws IOException if an I/O error occurs
      */
     private static void fetchAndSave(
-            final String endpoint,
-            final String prefix
+            OkHttpClient client,
+            String endpoint,
+            String prefix
     ) throws IOException {
         String url = BASE_URL + endpoint;
         Request request = new Request.Builder()
             .url(url)
+            .addHeader("User-Agent", "Mozilla/5.0")
             .build();
 
-        try (Response response = CLIENT.newCall(request).execute()) {
+        try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                throw new IOException("Unexpected code " + response);
+                throw new IOException(String.format("Unexpected code %d for URL: %s", 
+                    response.code(), url));
+            }
+
+            String responseBody = response.body() != null ? response.body().string() : "";
+            if (responseBody.trim().isEmpty()) {
+                throw new IOException("Empty response received from " + url);
             }
 
             String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
             File dir = new File(RAW_PATH);
-            if (!dir.exists()) {
-                dir.mkdirs();
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw new IOException("Failed to create directory: " + dir.getAbsolutePath());
             }
 
             String filename = String.format(
@@ -93,9 +146,23 @@ public final class CoinGeckoIngest {
             );
 
             try (FileWriter writer = new FileWriter(filename)) {
-                writer.write(response.body().string());
+                writer.write(responseBody);
                 System.out.println("Saved: " + prefix + " at " + timestamp);
             }
+        }
+    }
+
+    /**
+     * Sleeps for the specified number of milliseconds.
+     *
+     * @param millis the number of milliseconds to sleep
+     */
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Sleep interrupted: " + e.getMessage());
         }
     }
 }

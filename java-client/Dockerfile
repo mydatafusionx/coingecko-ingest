@@ -37,7 +37,8 @@ USER appuser
 # Copia o JAR gerado
 COPY --from=builder --chown=appuser:appuser /app/target/app.jar .
 
-# Define variáveis de ambiente
+# Define environment variables
 ENV JAVA_OPTS="-Xms512m -Xmx1024m"
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# The application will be run manually via docker exec
+# This prevents the container from crashing due to API rate limits on startup

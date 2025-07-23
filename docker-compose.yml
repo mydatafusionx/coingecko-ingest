@@ -20,35 +20,44 @@ services:
       retries: 5
 
   airflow-webserver:
-    build: ./airflow
+    image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.1}
     container_name: airflow-webserver
     restart: always
-    user: "0"  # Run as root to have permissions to access docker.sock
-    depends_on:
-      postgres:
-        condition: service_healthy
-      spark-master:
-        condition: service_started
+    user: "${AIRFLOW_UID:-1000}:0"  # Use AIRFLOW_UID from .env or default to 1000 (default Airflow user)
     environment:
-      - AIRFLOW_HOME=/opt/airflow
+      - AIRFLOW_UID=${AIRFLOW_UID:-1000}
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
-      - AIRFLOW__WEBSERVER__RBAC=False
-      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark apache-airflow-providers-docker
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    ports:
-      - "8081:8080"
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+      - AIRFLOW__WEBSERVER__EXPOSE_HOSTNAME=True
+      - AIRFLOW__METRICS__STATS_ON=True
+      - AIRFLOW__METRICS__STATS_ENABLED=True
+      - AIRFLOW__METRICS__STATS_ENABLE_LEGACY=True
+      - AIRFLOW__METRICS__STATS_DATADOG_ENABLED=False
+      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-spark apache-airflow-providers-docker prometheus-client
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
+    depends_on:
+      - postgres
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
       - ./airflow/plugins:/opt/airflow/plugins
+      - /tmp/prometheus:/tmp/prometheus
+      - ./spark:/opt/airflow/spark:ro
+    ports:
+      - "8081:8080"
+    command: >
+      bash -c "
+      mkdir -p /tmp/prometheus &&
+      chmod 777 /tmp/prometheus &&
+      airflow webserver
+      "
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -56,14 +65,12 @@ services:
       retries: 5
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: webserver
-    # The entrypoint is defined in the Dockerfile
 
   airflow-scheduler:
     build: ./airflow
     container_name: airflow-scheduler
     restart: always
-    user: "0"  # Run as root to have permissions to access docker.sock
+    user: "${AIRFLOW_UID:-1000}:0"  # Use AIRFLOW_UID from .env or default to 1000 (default Airflow user)
     depends_on:
       - postgres
       - spark-master
@@ -78,7 +85,6 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./data:/data
@@ -97,12 +103,19 @@ services:
     container_name: spark-master
     environment:
       - SPARK_MODE=master
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.metrics.conf=/opt/bitnami/spark/conf/metrics.properties
+      - SPARK_MASTER_WEBUI_PORT=8080
+    command: >
+      bash -c "
+      pip install importlib_metadata && 
+      /opt/bitnami/scripts/spark/run.sh"
     ports:
       - "4041:4040"  # Spark UI
       - "7077:7077"  # Spark Master
       - "8080:8080"  # Spark Master Web UI
     volumes:
       - ./data:/data
+      - ./spark/conf/metrics.properties:/opt/bitnami/spark/conf/metrics.properties:ro
     healthcheck:
       test: ["CMD", "pgrep", "-f", "org.apache.spark.deploy.master.Master"]
       interval: 10s
@@ -115,11 +128,16 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.metrics.conf=/opt/bitnami/spark/conf/metrics.properties
+      - SPARK_WORKER_WEBUI_PORT=8081
     depends_on:
       spark-master:
         condition: service_healthy
+    ports:
+      - "8082:8081"  # Spark Worker Web UI
     volumes:
       - ./data:/data
+      - ./spark/conf/metrics.properties:/opt/bitnami/spark/conf/metrics.properties:ro
     healthcheck:
       test: ["CMD", "pgrep", "-f", "org.apache.spark.deploy.worker.Worker"]
       interval: 10s
@@ -131,11 +149,21 @@ services:
       context: ./java-client
       dockerfile: Dockerfile
     container_name: java-client
+    restart: unless-stopped
     volumes:
       - ./data/raw:/data/raw
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow the container to execute docker commands
     environment:
       - JAVA_OPTS=-Xmx512m
     working_dir: /app
+    # Keep the container running with a simple command
+    command: ["tail", "-f", "/dev/null"]
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "tail"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       spark-master:
         condition: service_healthy

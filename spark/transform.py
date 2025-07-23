@@ -4,7 +4,22 @@ import json
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_unixtime, to_date, lit, explode, array, struct, to_json, when
 from pyspark.sql.types import DoubleType, LongType
-from delta import configure_spark_with_delta_pip
+
+# Tenta importar o importlib_metadata ou fornece uma mensagem de erro clara
+try:
+    import importlib_metadata
+except ImportError:
+    print("ERRO: O pacote 'importlib_metadata' não está instalado.")
+    print("Por favor, instale-o executando: pip install importlib_metadata")
+    sys.exit(1)
+
+# Agora importa o Delta Lake
+try:
+    from delta import configure_spark_with_delta_pip
+except ImportError as e:
+    print(f"ERRO ao importar o Delta Lake: {e}")
+    print("Certifique-se de que o Delta Lake está instalado corretamente.")
+    sys.exit(1)
 
 # Verifica se está rodando em container (VPS) ou localmente
 IS_CONTAINER = os.path.exists('/.dockerenv') or os.path.exists('/data')
@@ -33,6 +48,11 @@ builder = (
     .config("spark.sql.warehouse.dir", os.path.join(BASE_DIR, "spark-warehouse"))
     .config("spark.driver.memory", "2g")
     .config("spark.executor.memory", "2g")
+    # Desativa as métricas do Prometheus para evitar erros
+    .config("spark.metrics.conf", "/dev/null")
+    .config("spark.metrics.namespace", "")
+    .config("spark.metrics.staticSources.enabled", "false")
+    .config("spark.ui.prometheus.enabled", "false")
 )
 
 # Configura o Delta Lake

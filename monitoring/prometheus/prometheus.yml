@@ -1,33 +1,41 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 30s
+  evaluation_interval: 30s
   scrape_timeout: 10s
 
 scrape_configs:
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
+  # Airflow metrics
   - job_name: 'airflow'
-    metrics_path: '/admin/metrics/'
+    metrics_path: '/metrics'
     static_configs:
       - targets: ['airflow-webserver:8080']
     scheme: http
-    tls_config:
-      insecure_skip_verify: true
 
-  - job_name: 'spark'
-    metrics_path: '/metrics/executors/prometheus/'
+  # Spark Master metrics
+  - job_name: 'spark-master'
+    metrics_path: '/metrics/master/prometheus'
     static_configs:
-      - targets: ['spark-master:4040']
+      - targets: ['spark-master:8080']
     scheme: http
-    tls_config:
-      insecure_skip_verify: true
 
+  # Spark Worker metrics
+  - job_name: 'spark-worker'
+    metrics_path: '/metrics/worker/prometheus'
+    static_configs:
+      - targets: ['spark-worker:8081']
+    scheme: http
+
+  # Node exporter for system metrics
   - job_name: 'node'
     static_configs:
       - targets: ['node-exporter:9100']
 
+  # cAdvisor for container metrics
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
